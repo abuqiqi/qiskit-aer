@@ -116,6 +116,7 @@ protected:
   int_t distributed_proc_bits_; // distributed_procs_=2^distributed_proc_bits_
                                 // (if nprocs != power of 2, set -1)
   uint_t num_process_per_experiment_ = 1;
+  mutable double comm_time = 0.0; // time for communication
 
 #ifdef AER_MPI
   // communicator group to simulate a circuit (for multi-experiments)
@@ -721,6 +722,13 @@ void Executor<state_t>::run_circuit(Circuit &circ,
       // save time also to metadata to pick time in primitive result
       result.metadata.add(time_taken, "time_taken");
     }
+#ifdef AER_MPI
+    // Add communication time to metadata
+    for (uint_t i = 0; i < circ.num_bind_params; i++) {
+      ExperimentResult &result = *(result_it + i);
+      result.metadata.add(comm_time, "communication_time");
+    }
+#endif
   }
   // If an exception occurs during execution, catch it and pass it to the output
   catch (std::exception &e) {

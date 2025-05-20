@@ -1311,6 +1311,7 @@ void ParallelStateExecutor<state_t>::apply_chunk_swap(const reg_t &qubits) {
         MPI_Status st;
         uint_t sizeRecv, sizeSend;
 
+        auto timer_start = MPI_Wtime();
         auto pRecv = Base::states_[iLocalChunk - Base::global_state_index_]
                          .qreg()
                          .recv_buffer(sizeRecv);
@@ -1325,6 +1326,8 @@ void ParallelStateExecutor<state_t>::apply_chunk_swap(const reg_t &qubits) {
 
         MPI_Wait(&reqSend, &st);
         MPI_Wait(&reqRecv, &st);
+        auto timer_end = MPI_Wtime();
+        Base::comm_time += (timer_end - timer_start);
 
         Base::states_[iLocalChunk - Base::global_state_index_]
             .qreg()
@@ -1449,6 +1452,7 @@ void ParallelStateExecutor<state_t>::apply_multi_chunk_swap(
           continue; // swap while data is exchanged between processes
         }
 #ifdef AER_MPI
+        auto timer_start = MPI_Wtime();
         uint_t sizeRecv, sizeSend;
         uint_t offset1 = i1 << (chunk_bits_ * qubit_scale() - nswap);
         uint_t offset2 = i2 << (chunk_bits_ * qubit_scale() - nswap);
@@ -1476,6 +1480,8 @@ void ParallelStateExecutor<state_t>::apply_multi_chunk_swap(
           MPI_Isend(pSend + offset1, (sizeSend >> nswap), MPI_BYTE, iProc1, tid,
                     Base::distributed_comm_, &reqSend[i1]);
         }
+        auto timer_end = MPI_Wtime();
+        Base::comm_time += (timer_end - timer_start);
 #endif
       }
 
@@ -1522,8 +1528,11 @@ void ParallelStateExecutor<state_t>::apply_multi_chunk_swap(
         uint_t offset2 = i2 << (chunk_bits_ * qubit_scale() - nswap);
 
         MPI_Status st;
+        auto timer_start = MPI_Wtime();
         MPI_Wait(&reqSend[i2], &st);
         MPI_Wait(&reqRecv[i2], &st);
+        auto timer_end = MPI_Wtime();
+        Base::comm_time += (timer_end - timer_start);
 
         // copy states from recv buffer to chunk
         Base::states_[iChunk1].qreg().apply_chunk_swap(
@@ -1674,6 +1683,7 @@ void ParallelStateExecutor<state_t>::apply_chunk_x(const uint_t qubit) {
         MPI_Status st;
         uint_t sizeRecv, sizeSend;
 
+        auto timer_start = MPI_Wtime();
         auto pSend = Base::states_[iLocalChunk - Base::global_state_index_]
                          .qreg()
                          .send_buffer(sizeSend);
@@ -1688,6 +1698,8 @@ void ParallelStateExecutor<state_t>::apply_chunk_x(const uint_t qubit) {
 
         MPI_Wait(&reqSend, &st);
         MPI_Wait(&reqRecv, &st);
+        auto timer_end = MPI_Wtime();
+        Base::comm_time += (timer_end - timer_start);
 
         Base::states_[iLocalChunk - Base::global_state_index_]
             .qreg()
@@ -1710,11 +1722,14 @@ void ParallelStateExecutor<state_t>::send_chunk(uint_t local_chunk_index,
   iProc = get_process_by_chunk(global_pair_index);
 
   auto pSend = Base::states_[local_chunk_index].qreg().send_buffer(sizeSend);
+  auto timer_start = MPI_Wtime();
   MPI_Isend(pSend, sizeSend, MPI_BYTE, iProc,
             local_chunk_index + Base::global_state_index_,
             Base::distributed_comm_, &reqSend);
 
   MPI_Wait(&reqSend, &st);
+  auto timer_end = MPI_Wtime();
+  Base::comm_time += (timer_end - timer_start);
 
   Base::states_[local_chunk_index].qreg().release_send_buffer();
 #endif
@@ -1732,10 +1747,13 @@ void ParallelStateExecutor<state_t>::recv_chunk(uint_t local_chunk_index,
   iProc = get_process_by_chunk(global_pair_index);
 
   auto pRecv = Base::states_[local_chunk_index].qreg().recv_buffer(sizeRecv);
+  auto timer_start = MPI_Wtime();
   MPI_Irecv(pRecv, sizeRecv, MPI_BYTE, iProc, global_pair_index,
             Base::distributed_comm_, &reqRecv);
 
   MPI_Wait(&reqRecv, &st);
+  auto timer_end = MPI_Wtime();
+  Base::comm_time += (timer_end - timer_start);
 #endif
 }
 
@@ -1749,11 +1767,13 @@ void ParallelStateExecutor<state_t>::send_data(data_t *pSend, uint_t size,
   uint_t iProc;
 
   iProc = get_process_by_chunk(pairid);
-
+  auto timer_start = MPI_Wtime();
   MPI_Isend(pSend, size * sizeof(data_t), MPI_BYTE, iProc, myid,
             Base::distributed_comm_, &reqSend);
 
   MPI_Wait(&reqSend, &st);
+  auto timer_end = MPI_Wtime();
+  Base::comm_time += (timer_end - timer_start);
 #endif
 }
 
@@ -1767,11 +1787,13 @@ void ParallelStateExecutor<state_t>::recv_data(data_t *pRecv, uint_t size,
   uint_t iProc;
 
   iProc = get_process_by_chunk(pairid);
-
+  auto timer_start = MPI_Wtime();
   MPI_Irecv(pRecv, size * sizeof(data_t), MPI_BYTE, iProc, pairid,
             Base::distributed_comm_, &reqRecv);
 
   MPI_Wait(&reqRecv, &st);
+  auto timer_end = MPI_Wtime();
+  Base::comm_time += (timer_end - timer_start);
 #endif
 }
 
@@ -1781,8 +1803,11 @@ void ParallelStateExecutor<state_t>::reduce_sum(reg_t &sum) const {
   if (Base::distributed_procs_ > 1) {
     uint_t i, n = sum.size();
     reg_t tmp(n);
+    auto timer_start = MPI_Wtime();
     MPI_Allreduce(&sum[0], &tmp[0], n, MPI_UINT64_T, MPI_SUM,
                   Base::distributed_comm_);
+    auto timer_end = MPI_Wtime();
+    Base::comm_time += (timer_end - timer_start);
     for (i = 0; i < n; i++) {
       sum[i] = tmp[i];
     }
@@ -1796,8 +1821,11 @@ void ParallelStateExecutor<state_t>::reduce_sum(rvector_t &sum) const {
   if (Base::distributed_procs_ > 1) {
     uint_t i, n = sum.size();
     rvector_t tmp(n);
+    auto timer_start = MPI_Wtime();
     MPI_Allreduce(&sum[0], &tmp[0], n, MPI_DOUBLE_PRECISION, MPI_SUM,
                   Base::distributed_comm_);
+    auto timer_end = MPI_Wtime();
+    Base::comm_time += (timer_end - timer_start);
     for (i = 0; i < n; i++) {
       sum[i] = tmp[i];
     }
@@ -1810,8 +1838,11 @@ void ParallelStateExecutor<state_t>::reduce_sum(complex_t &sum) const {
 #ifdef AER_MPI
   if (Base::distributed_procs_ > 1) {
     complex_t tmp;
+    auto timer_start = MPI_Wtime();
     MPI_Allreduce(&sum, &tmp, 2, MPI_DOUBLE_PRECISION, MPI_SUM,
                   Base::distributed_comm_);
+    auto timer_end = MPI_Wtime();
+    Base::comm_time += (timer_end - timer_start);
     sum = tmp;
   }
 #endif
@@ -1822,8 +1853,11 @@ void ParallelStateExecutor<state_t>::reduce_sum(double &sum) const {
 #ifdef AER_MPI
   if (Base::distributed_procs_ > 1) {
     double tmp;
+    auto timer_start = MPI_Wtime();
     MPI_Allreduce(&sum, &tmp, 1, MPI_DOUBLE_PRECISION, MPI_SUM,
                   Base::distributed_comm_);
+    auto timer_end = MPI_Wtime();
+    Base::comm_time += (timer_end - timer_start);
     sum = tmp;
   }
 #endif
@@ -1834,8 +1868,11 @@ void ParallelStateExecutor<state_t>::gather_value(rvector_t &val) const {
 #ifdef AER_MPI
   if (Base::distributed_procs_ > 1) {
     rvector_t tmp = val;
+    auto timer_start = MPI_Wtime();
     MPI_Alltoall(&tmp[0], 1, MPI_DOUBLE_PRECISION, &val[0], 1,
                  MPI_DOUBLE_PRECISION, Base::distributed_comm_);
+    auto timer_end = MPI_Wtime();
+    Base::comm_time += (timer_end - timer_start);
   }
 #endif
 }
@@ -1879,6 +1916,7 @@ void ParallelStateExecutor<state_t>::gather_state(
     std::vector<std::complex<data_t>> local_state = state;
     state.resize(global_size);
 
+    auto timer_start = MPI_Wtime();
     if (sizeof(std::complex<data_t>) == 16) {
       MPI_Allgatherv(local_state.data(), recv_counts[Base::distributed_rank_],
                      MPI_DOUBLE_PRECISION, state.data(), &recv_counts[0],
@@ -1889,6 +1927,8 @@ void ParallelStateExecutor<state_t>::gather_state(
                      MPI_FLOAT, state.data(), &recv_counts[0], &recv_offset[0],
                      MPI_FLOAT, Base::distributed_comm_);
     }
+    auto timer_end = MPI_Wtime();
+    Base::comm_time += (timer_end - timer_start);
   }
 #endif
 }
@@ -1923,6 +1963,7 @@ void ParallelStateExecutor<state_t>::gather_state(
     AER::Vector<std::complex<data_t>> local_state = state;
     state.resize(global_size);
 
+    auto timer_start = MPI_Wtime();
     if (sizeof(std::complex<data_t>) == 16) {
       MPI_Allgatherv(local_state.data(), recv_counts[Base::distributed_rank_],
                      MPI_DOUBLE_PRECISION, state.data(), &recv_counts[0],
@@ -1933,6 +1974,8 @@ void ParallelStateExecutor<state_t>::gather_state(
                      MPI_FLOAT, state.data(), &recv_counts[0], &recv_offset[0],
                      MPI_FLOAT, Base::distributed_comm_);
     }
+    auto timer_end = MPI_Wtime();
+    Base::comm_time += (timer_end - timer_start);
   }
 #endif
 }
