@@ -21,8 +21,6 @@
 #include <omp.h>
 #endif
 
-#define AER_MPI
-
 #ifdef AER_MPI
 #include <mpi.h>
 #endif
