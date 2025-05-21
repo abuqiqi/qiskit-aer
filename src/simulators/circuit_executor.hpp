@@ -368,7 +368,9 @@ size_t Executor<state_t>::get_system_memory_mb() {
   // get minimum memory size per process
   uint64_t locMem, minMem;
   locMem = total_physical_memory;
+  auto timer_start = MPI_Wtime();
   MPI_Allreduce(&locMem, &minMem, 1, MPI_UINT64_T, MPI_MIN, distributed_comm_);
+  comm_time += MPI_Wtime() - timer_start;
   total_physical_memory = minMem;
 #endif
 
@@ -397,7 +399,9 @@ size_t Executor<state_t>::get_gpu_memory_mb() {
   // get minimum memory size per process
   uint64_t locMem, minMem;
   locMem = total_physical_memory;
+  auto timer_start = MPI_Wtime();
   MPI_Allreduce(&locMem, &minMem, 1, MPI_UINT64_T, MPI_MIN, distributed_comm_);
+  comm_time += MPI_Wtime() - timer_start;
   total_physical_memory = minMem;
 
 #endif
@@ -474,8 +478,10 @@ void Executor<state_t>::set_parallelization(const Config &config,
 
 #ifdef AER_MPI
   if (num_process_per_experiment_ != nprocs_) {
+    auto timer_start = MPI_Wtime();
     MPI_Comm_split(MPI_COMM_WORLD, (int)distributed_group_,
                    (int)distributed_rank_, &distributed_comm_);
+    comm_time += MPI_Wtime() - timer_start;
   } else {
     distributed_comm_ = MPI_COMM_WORLD;
   }
@@ -723,10 +729,17 @@ void Executor<state_t>::run_circuit(Circuit &circ,
       result.metadata.add(time_taken, "time_taken");
     }
 #ifdef AER_MPI
+    // Collect communication times
+    int mpisize = 1;
+    MPI_Comm_size(distributed_comm_, &mpisize);
+    std::vector<double> all_comm_times(mpisize);
+    MPI_Gather(&comm_time, 1, MPI_DOUBLE, all_comm_times.data(), 1,
+               MPI_DOUBLE, 0, distributed_comm_);
+
     // Add communication time to metadata
     for (uint_t i = 0; i < circ.num_bind_params; i++) {
       ExperimentResult &result = *(result_it + i);
-      result.metadata.add(comm_time, "communication_time");
+      result.metadata.add(all_comm_times, "all_communication_times");
     }
 #endif
   }
@@ -1426,9 +1439,11 @@ void Executor<state_t>::gather_creg_memory(
   recv_counts[distributed_procs_ - 1] =
       cregs.size() - shot_index[distributed_procs_ - 1];
 
+  auto timer_start = MPI_Wtime();
   MPI_Allgatherv(&bin_memory[0], n64 * num_local_shots, MPI_UINT64_T, &recv[0],
                  &recv_counts[0], &recv_offset[0], MPI_UINT64_T,
                  distributed_comm_);
+  comm_time += MPI_Wtime() - timer_start;
 
   // store gathered memory
 #pragma omp parallel for private(i64, ibit)

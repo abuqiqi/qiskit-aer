@@ -70,6 +70,7 @@ public:
 protected:
   mutable uint_t block_bits_; // qubits less than this will be blocked
   mutable uint_t qubits_;
+  mutable uint_t num_inserted_swaps_ = 0; // the number of swaps inserted
   mutable reg_t qubitMap_;
   mutable reg_t qubitSwapped_;
   mutable bool blocking_enabled_;
@@ -190,6 +191,7 @@ void CacheBlocking::insert_swap(std::vector<Operations::Op> &ops, uint_t bit0,
   sgate.qubits = {bit0, bit1};
   sgate.string_params = {sgate.name};
   ops.push_back(sgate);
+  num_inserted_swaps_ ++;
 }
 
 void CacheBlocking::insert_sim_op(std::vector<Operations::Op> &ops,
@@ -266,6 +268,7 @@ void CacheBlocking::optimize_circuit(Circuit &circ, Noise::NoiseModel &noise,
     if (blocking_enabled_) {
       result.metadata.add(true, "cacheblocking", "enabled");
       result.metadata.add(block_bits_, "cacheblocking", "block_bits");
+      result.metadata.add(num_inserted_swaps_, "cacheblocking", "num_inserted_swaps");
     }
   }
 
