@@ -1588,6 +1588,10 @@ void AerState::transpile_ops() {
     cache_block_pass_.set_restore_qubit_map(
         true); // restore swapped qubits because buffer_ does not include output
                // qubits
+#ifdef AER_MPI
+  if (myrank_ == 0)
+    std::cout << "[DEBUG] call cache_block_pass_.optimize_circuit from AerState::transpile_ops" << std::endl;
+#endif
     cache_block_pass_.optimize_circuit(buffer_, noise_model_, state_->opset(),
                                        last_result_);
   }

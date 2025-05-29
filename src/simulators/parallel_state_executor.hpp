@@ -422,6 +422,12 @@ void ParallelStateExecutor<state_t>::run_circuit_with_sampling(
     // Cache blocking pass
     auto cache_block_pass = transpile_cache_blocking(circ, dummy_noise, config);
     cache_block_pass.set_sample_measure(true);
+#ifdef AER_MPI
+    int mpirank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &mpirank);
+    if (mpirank == 0)
+      std::cout << "[DEBUG] call cache_block_pass.optimize_circuit from multiple_chunk_required" << std::endl;
+#endif
     cache_block_pass.optimize_circuit(circ, dummy_noise, dummy_state.opset(),
                                       fusion_result);
     cache_block = cache_block_pass.enabled();
@@ -510,6 +516,12 @@ void ParallelStateExecutor<state_t>::run_circuit_shots(
                                  fusion_result);
     // Cache blocking pass
     cache_block_pass.set_sample_measure(false);
+#ifdef AER_MPI
+    int mpirank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &mpirank);
+    if (mpirank == 0)
+      std::cout << "[DEBUG] call cache_block_pass.optimize_circuit from run_circuit_shots !sample_noise" << std::endl;
+#endif
     cache_block_pass.optimize_circuit(circ, dummy_noise, dummy_state.opset(),
                                       fusion_result);
     Base::max_matrix_qubits_ = Base::get_max_matrix_qubits(circ);
@@ -559,6 +571,12 @@ void ParallelStateExecutor<state_t>::run_circuit_shots(
                                      *(result_it + iparam));
         // Cache blocking pass
         cache_block_pass.set_sample_measure(false);
+#ifdef AER_MPI
+        int mpirank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &mpirank);
+        if (mpirank == 0)
+          std::cout << "[DEBUG] call cache_block_pass.optimize_circuit from run_circuit_shots sample_noise" << std::endl;
+#endif
         cache_block_pass.optimize_circuit(
             circ_opt, dummy_noise, dummy_state.opset(), *(result_it + iparam));
 
