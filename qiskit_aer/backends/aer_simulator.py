@@ -787,6 +787,7 @@ class AerSimulator(AerBackend):
             blocking_qubits=None,
             blocking_enable=False,
             chunk_swap_buffer_qubits=None,
+            replace_swap_with_chunk_swap=False,
             # multi-shots optimization options (GPU only)
             batched_shots_gpu=False,
             batched_shots_gpu_max_qubits=16,

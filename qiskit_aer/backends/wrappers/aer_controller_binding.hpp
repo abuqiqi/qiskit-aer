@@ -176,6 +176,7 @@ void bind_aer_controller(MODULE m) {
       [](Config &config, uint_t val) {
         config.chunk_swap_buffer_qubits.value(val);
       });
+  aer_config.def_readwrite("replace_swap_with_chunk_swap", &Config::replace_swap_with_chunk_swap);
   // # multi-shots optimization options (GPU only)
   aer_config.def_readwrite("batched_shots_gpu", &Config::batched_shots_gpu);
   aer_config.def_readwrite("batched_shots_gpu_max_qubits",
@@ -449,6 +450,7 @@ void bind_aer_controller(MODULE m) {
             write_value(19, config.blocking_qubits),
             write_value(20, config.blocking_enable),
             write_value(21, config.chunk_swap_buffer_qubits),
+            write_value(102, config.replace_swap_with_chunk_swap),
             write_value(22, config.batched_shots_gpu),
             write_value(23, config.batched_shots_gpu_max_qubits),
             write_value(24, config.num_threads_per_device),
@@ -544,6 +546,7 @@ void bind_aer_controller(MODULE m) {
         read_value(t, 19, config.blocking_qubits);
         read_value(t, 20, config.blocking_enable);
         read_value(t, 21, config.chunk_swap_buffer_qubits);
+        read_value(t, 102, config.replace_swap_with_chunk_swap);
         read_value(t, 22, config.batched_shots_gpu);
         read_value(t, 23, config.batched_shots_gpu_max_qubits);
         read_value(t, 24, config.num_threads_per_device);

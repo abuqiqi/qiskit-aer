@@ -501,6 +501,7 @@ class QasmSimulator(AerBackend):
             accept_distributed_results=None,
             blocking_qubits=None,
             blocking_enable=False,
+            replace_swap_with_chunk_swap=False,
             memory=None,
             noise_model=None,
             seed_simulator=None,

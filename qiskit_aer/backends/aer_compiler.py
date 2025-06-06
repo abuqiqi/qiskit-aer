@@ -572,6 +572,7 @@ BACKEND_RUN_ARG_TYPES = {
     "blocking_qubits": (int, np.integer),
     "blocking_enable": (bool, np.bool_),
     "chunk_swap_buffer_qubits": (int, np.integer),
+    "replace_swap_with_chunk_swap": (bool, np.bool_),
     "batched_shots_gpu": (bool, np.bool_),
     "batched_shots_gpu_max_qubits": (int, np.integer),
     "shot_branching_enable": (bool, np.bool_),

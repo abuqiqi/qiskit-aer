@@ -273,6 +273,7 @@ class UnitarySimulator(AerBackend):
             fusion_threshold=14,
             blocking_qubits=None,
             blocking_enable=False,
+            replace_swap_with_chunk_swap=False,
             # statevector options
             statevector_parallel_threshold=14,
         )

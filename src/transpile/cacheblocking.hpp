@@ -85,9 +85,12 @@ protected:
   uint_t num_processes_ = 1;
   
   mutable int mpirank = 0;
+  mutable bool replace_swap_with_chunk_swap = false;
 
   bool block_circuit(Circuit &circ, bool doSwap) const;
   bool block_circuit_by_replace(Circuit &circ, bool doSwap) const;
+
+  bool is_cross_swap(Operations::Op &op) const;
 
   void put_nongate_ops(std::vector<Operations::Op> &out,
                        std::vector<Operations::Op> &queue,
@@ -148,6 +151,8 @@ void CacheBlocking::set_config(const Config &config) {
       memory_blocking_bits_ = 10;
     }
   }
+
+  replace_swap_with_chunk_swap = config.replace_swap_with_chunk_swap;
 
   std::string method = config.method;
   if (method.find("density_matrix") != std::string::npos)
@@ -289,7 +294,15 @@ void CacheBlocking::optimize_circuit(Circuit &circ, Noise::NoiseModel &noise,
     }
 
     // blocking_enabled_ = block_circuit(circ, true);
-    blocking_enabled_ = block_circuit_by_replace(circ, true);
+    if (replace_swap_with_chunk_swap) {
+      if (mpirank == 0)
+        std::cout << "[DEBUG] replace_swap_with_chunk_swap is enabled" << std::endl;
+      blocking_enabled_ = block_circuit_by_replace(circ, true);
+    } else {
+      if (mpirank == 0)
+        std::cout << "[DEBUG] replace_swap_with_chunk_swap is disabled" << std::endl;
+      blocking_enabled_ = block_circuit(circ, true);
+    }
 
     if (blocking_enabled_) {
       result.metadata.add(true, "cacheblocking", "enabled");
@@ -325,11 +338,14 @@ void CacheBlocking::optimize_circuit(Circuit &circ, Noise::NoiseModel &noise,
 
   circ.set_params();
   // print the ops
-  if (mpirank == 0) {
-    for(auto& op : circ.ops) {
-      std::cout << "[DEBUG] op: " << op << std::endl;
-    }
-  }
+  // if (mpirank == 0) {
+  //   std::cout << "[DEBUG] circ.first_measure_pos: " << circ.first_measure_pos << std::endl;
+  //   std::cout << "[DEBUG] print circ from optimize_circuit" << std::endl;
+  //   for (auto& op : circ.ops) {
+  //     std::cout << "[DEBUG] op: " << op << std::endl;
+  //   }
+  //   std::cout << "[DEBUG] ==============" << std::endl;
+  // }
 }
 
 void CacheBlocking::define_blocked_qubits(std::vector<Operations::Op> &ops,
@@ -457,6 +473,11 @@ bool CacheBlocking::block_circuit_by_replace(Circuit &circ, bool doSwap) const {
   uint_t n;
   std::vector<Operations::Op> out;
   reg_t blockedQubits;
+  bool begin_block_just_inserted, end_block_inserted;
+
+  if (mpirank == 0) {
+    std::cout << "[DEBUG] block_circuit_by_replace" << std::endl;
+  }
 
   // begin_blocking, ..., end_blocking, swap_chunk, begin_blocking, ...
 
@@ -465,39 +486,76 @@ bool CacheBlocking::block_circuit_by_replace(Circuit &circ, bool doSwap) const {
     blockedQubits.push_back(i);
   }
   insert_sim_op(out, "begin_blocking", blockedQubits);
+  begin_block_just_inserted = true;
+  end_block_inserted = false;
 
   for (uint_t i = 0; i < circ.ops.size(); i++) {
     auto& op = circ.ops[i];
-    // if swap high-low order, add swap_chunk
-    if (op.name == "swap" && 
-       (op.qubits[0] < block_bits_ && op.qubits[1] >= block_bits_) || 
-       (op.qubits[0] >= block_bits_ && op.qubits[1] < block_bits_)) {
+    if (mpirank == 0) {
+      std::cout << "[DEBUG] block_circuit_by_replace: " << op << std::endl;
+    }
+    // if (op.type == Operations::OpType::barrier) {
+    //   if (end_block_inserted) {
+    //     insert_sim_op(out, "begin_blocking", blockedQubits);
+    //     end_block_inserted = false; // reset end_block_inserted
+    //   } else {
+    //     insert_sim_op(out, "end_blocking", blockedQubits);
+    //     end_block_inserted = true; // set end_block_inserted
+    //   }
+    // } else
+    assert(op.type != Operations::OpType::barrier);
+    if (op.type == Operations::OpType::save_statevec && !end_block_inserted) {
+      if (begin_block_just_inserted) {
+        out.pop_back(); // pop begin_blocking
+      } else {
+        insert_sim_op(out, "end_blocking", blockedQubits);
+      }
+      begin_block_just_inserted = false;
+      end_block_inserted = true; // set end_block_inserted
+      out.push_back(op);
+    } else if (is_cross_swap(op)) {
       insert_swap(out, op.qubits[0], op.qubits[1], true);
+      begin_block_just_inserted = false;
       // if the next (exist) is not swap high-low order, add begin_blocking
       if (i + 1 != circ.ops.size()) {
         auto& next_op = circ.ops[i+1];
-        if (!(next_op.name == "swap" && 
-             (next_op.qubits[0] < block_bits_ && next_op.qubits[1] >= block_bits_) || 
-             (next_op.qubits[0] >= block_bits_ && next_op.qubits[1] < block_bits_))) {
+        if (!is_cross_swap(next_op)) {
           insert_sim_op(out, "begin_blocking", blockedQubits);
+          begin_block_just_inserted = true;
+          end_block_inserted = false; // reset end_block_inserted
         }
       }
     } else {
       // add op
       out.push_back(op);
-      if (i + 1 != circ.ops.size()) {
+      begin_block_just_inserted = false;
+      if (i + 1 != circ.ops.size()) { // not the final op
         auto& next_op = circ.ops[i+1];
         // if the next is swap high-low, add end_blocking
-        if (next_op.name == "swap" && 
-           (next_op.qubits[0] < block_bits_ && next_op.qubits[1] >= block_bits_) || 
-           (next_op.qubits[0] >= block_bits_ && next_op.qubits[1] < block_bits_)) {
+        if (is_cross_swap(next_op)) {
           insert_sim_op(out, "end_blocking", blockedQubits);
+          end_block_inserted = true; // set end_block_inserted
         }
       }
     }
   }
   circ.ops = out;
+  // if (mpirank == 0) {
+  //   for (auto& op : circ.ops)
+  //     std::cout << op << std::endl;
+  // }
   return true;
+}
+
+bool CacheBlocking::is_cross_swap(Operations::Op &op) const {
+  // check if the swap is cross high, low-order qubits
+  if (op.name == "swap" && op.qubits.size() == 2) {
+    if ((op.qubits[0] < block_bits_ && op.qubits[1] >= block_bits_) ||
+        (op.qubits[0] >= block_bits_ && op.qubits[1] < block_bits_)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void CacheBlocking::restore_qubits_order(
@@ -686,7 +744,13 @@ uint_t CacheBlocking::add_ops(std::vector<Operations::Op> &ops,
 
   // gather blocked gates
   for (i = 0; i < ops.size(); i++) {
+    if (mpirank == 0) {
+      std::cout << "[DEBUG] add_ops: " << ops[i] << std::endl;
+    }
     if (is_blockable_operation(ops[i])) {
+      if (mpirank == 0) {
+        std::cout << "[DEBUG] add_ops: is_blockable_operation" << std::endl;
+      }
       if (!end_block_inserted) {
         if (is_diagonal_op(ops[i]) || can_block(ops[i], blockedQubits)) {
           if (can_reorder(ops[i], queue)) {
@@ -715,7 +779,13 @@ uint_t CacheBlocking::add_ops(std::vector<Operations::Op> &ops,
         }
       }
     } else {
+      if (mpirank == 0) {
+        std::cout << "[DEBUG] add_ops: not is_blockable_operation" << std::endl;
+      }
       if (queue.size() == 0) { // if queue is empty, apply op here
+        if (mpirank == 0) {
+          std::cout << "[DEBUG] add_ops: queue.size() == 0" << std::endl;
+        }
         bool restore_qubits = false;
         if (ops[i].type == Operations::OpType::kraus) {
           if (ops[i].qubits.size() > block_bits_) {
@@ -758,8 +828,16 @@ uint_t CacheBlocking::add_ops(std::vector<Operations::Op> &ops,
 
         if (num_gates_added > 0 &&
             !end_block_inserted) { // insert end of block to synchronize chunks
-          if (doSwap)
+          if (doSwap) {
+            if (mpirank == 0) {
+              std::cout << "[DEBUG] L776 insert end_blocking, blockedQubits: ";
+              for (auto& bq : blockedQubits) {
+                std::cout << bq << " ";
+              }
+              std::cout << std::endl;
+            }
             insert_sim_op(out, "end_blocking", blockedQubits);
+          }
           else
             insert_sim_op(out, "end_memory_blocking", blockedQubits);
         } else if (!end_block_inserted) {
@@ -775,6 +853,9 @@ uint_t CacheBlocking::add_ops(std::vector<Operations::Op> &ops,
           }
         }
 
+        if (mpirank == 0) {
+          std::cout << "[DEBUG] L812 add ops[" << i << "]: " << ops[i] << std::endl;
+        }
         out.push_back(ops[i]);
         num_gates_added++;
 
@@ -787,9 +868,16 @@ uint_t CacheBlocking::add_ops(std::vector<Operations::Op> &ops,
 
   if (!end_block_inserted) {
     if (num_gates_added > 0) {
-      if (doSwap)
+      if (doSwap) {
+        if (mpirank == 0) {
+          std::cout << "[DEBUG] L813 insert end_blocking, blockedQubits: ";
+          for (auto& bq : blockedQubits) {
+            std::cout << bq << " ";
+          }
+          std::cout << std::endl;
+        }
         insert_sim_op(out, "end_blocking", blockedQubits);
-      else
+      } else
         insert_sim_op(out, "end_memory_blocking", blockedQubits);
     } else {
       // pop unnecessary operations

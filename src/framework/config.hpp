@@ -96,6 +96,7 @@ struct Config {
   optional<uint_t> blocking_qubits;
   bool blocking_enable = false;
   optional<uint_t> chunk_swap_buffer_qubits;
+  bool replace_swap_with_chunk_swap = false; // replace swap with chunk swap
   // # multi-shots optimization options (GPU only)
   bool batched_shots_gpu = false;
   uint_t batched_shots_gpu_max_qubits = 16;
@@ -203,6 +204,7 @@ struct Config {
     blocking_qubits.clear();
     blocking_enable = false;
     chunk_swap_buffer_qubits.clear();
+    replace_swap_with_chunk_swap = false;
     // # multi-shots optimization options (GPU only)
     batched_shots_gpu = false;
     batched_shots_gpu_max_qubits = 16;
@@ -320,6 +322,7 @@ struct Config {
     blocking_enable = other.blocking_enable;
     if (other.chunk_swap_buffer_qubits.has_value())
       chunk_swap_buffer_qubits.value(other.chunk_swap_buffer_qubits.value());
+    replace_swap_with_chunk_swap = other.replace_swap_with_chunk_swap;
     // # multi-shots optimization options (GPU only)
     batched_shots_gpu = other.batched_shots_gpu;
     batched_shots_gpu_max_qubits = other.batched_shots_gpu_max_qubits;
@@ -458,6 +461,8 @@ inline void from_json(const json_t &js, Config &config) {
   get_value(config.blocking_qubits, "blocking_qubits", js);
   get_value(config.blocking_enable, "blocking_enable", js);
   get_value(config.chunk_swap_buffer_qubits, "chunk_swap_buffer_qubits", js);
+  get_value(config.replace_swap_with_chunk_swap,
+            "replace_swap_with_chunk_swap", js);
   // # multi-shots optimization options (GPU only)
   get_value(config.batched_shots_gpu, "batched_shots_gpu", js);
   get_value(config.batched_shots_gpu_max_qubits, "batched_shots_gpu_max_qubits",
