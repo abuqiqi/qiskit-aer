@@ -426,19 +426,19 @@ void ParallelStateExecutor<state_t>::run_circuit_with_sampling(
     auto cache_block_pass = transpile_cache_blocking(circ, dummy_noise, config);
     cache_block_pass.set_sample_measure(true);
 
-    if (mpirank == 0)
-      std::cout << "[DEBUG] call cache_block_pass.optimize_circuit from multiple_chunk_required" << std::endl;
+    // if (mpirank == 0)
+    //   std::cout << "[DEBUG] call cache_block_pass.optimize_circuit from multiple_chunk_required" << std::endl;
 
     cache_block_pass.optimize_circuit(circ, dummy_noise, dummy_state.opset(),
                                       fusion_result);
     cache_block = cache_block_pass.enabled();
-    if (mpirank == 0) {
-      std::cout << "[DEBUG] print circ from executor" << std::endl;
-      for (auto& op : circ.ops) {
-        std::cout << "[DEBUG] op: " << op << " " << op.type << std::endl;
-      }
-      std::cout << "[DEBUG] ==============" << std::endl;
-    }
+    // if (mpirank == 0) {
+    //   std::cout << "[DEBUG] print circ from executor" << std::endl;
+    //   for (auto& op : circ.ops) {
+    //     std::cout << "[DEBUG] op: " << op << " " << op.type << std::endl;
+    //   }
+    //   std::cout << "[DEBUG] ==============" << std::endl;
+    // }
   }
   if (!cache_block) {
     return Executor<state_t>::run_circuit_with_sampling(circ, config, init_rng,
@@ -479,31 +479,31 @@ void ParallelStateExecutor<state_t>::run_circuit_with_sampling(
     auto first_meas =
         circ.first_measure_pos; // Position of first measurement op
     bool final_ops = (first_meas == ops.size());
-    if (mpirank == 0) {
-      std::cout << "[DEBUG] first_meas: " << first_meas << " , is_final_ops: " << final_ops << std::endl;
-    }
+    // if (mpirank == 0) {
+    //   std::cout << "[DEBUG] first_meas: " << first_meas << " , is_final_ops: " << final_ops << std::endl;
+    // }
 
     initialize_qreg(circ.num_qubits);
     for (uint_t i = 0; i < Base::states_.size(); i++) {
       Base::states_[i].initialize_creg(circ.num_memory, circ.num_registers);
     }
-    if (mpirank == 0) {
-      std::cout << "[DEBUG] finish initialize_qreg" << std::endl;
-    }
+    // if (mpirank == 0) {
+    //   std::cout << "[DEBUG] finish initialize_qreg" << std::endl;
+    // }
 
     // Run circuit instructions before first measure
     apply_ops_chunks(ops.cbegin(), ops.cbegin() + first_meas, result, rng,
                      iparam, final_ops);
-    if (mpirank == 0) {
-      std::cout << "[DEBUG] finish apply_ops_chunks" << std::endl;
-    }
+    // if (mpirank == 0) {
+    //   std::cout << "[DEBUG] finish apply_ops_chunks" << std::endl;
+    // }
 
     // Get measurement operations and set of measured qubits
     measure_sampler(circ.ops.begin() + first_meas, circ.ops.end(), circ.shots,
                     result, rng);
-    if (mpirank == 0) {
-      std::cout << "[DEBUG] finish measure_sampler" << std::endl;
-    }
+    // if (mpirank == 0) {
+    //   std::cout << "[DEBUG] finish measure_sampler" << std::endl;
+    // }
 
     // Add measure sampling metadata
     result.metadata.add(true, "measure_sampling");
@@ -539,8 +539,8 @@ void ParallelStateExecutor<state_t>::run_circuit_shots(
 
     int mpirank;
     MPI_Comm_rank(MPI_COMM_WORLD, &mpirank);
-    if (mpirank == 0)
-      std::cout << "[DEBUG] call cache_block_pass.optimize_circuit from run_circuit_shots !sample_noise" << std::endl;
+    // if (mpirank == 0)
+    //   std::cout << "[DEBUG] call cache_block_pass.optimize_circuit from run_circuit_shots !sample_noise" << std::endl;
 
     cache_block_pass.optimize_circuit(circ, dummy_noise, dummy_state.opset(),
                                       fusion_result);
@@ -594,8 +594,8 @@ void ParallelStateExecutor<state_t>::run_circuit_shots(
 #ifdef AER_MPI
         int mpirank;
         MPI_Comm_rank(MPI_COMM_WORLD, &mpirank);
-        if (mpirank == 0)
-          std::cout << "[DEBUG] call cache_block_pass.optimize_circuit from run_circuit_shots sample_noise" << std::endl;
+        // if (mpirank == 0)
+        //   std::cout << "[DEBUG] call cache_block_pass.optimize_circuit from run_circuit_shots sample_noise" << std::endl;
 #endif
         cache_block_pass.optimize_circuit(
             circ_opt, dummy_noise, dummy_state.opset(), *(result_it + iparam));
